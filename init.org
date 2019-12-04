@@ -40,6 +40,7 @@ Set scopes to lexical (how it should be by default really). And initialize perso
 (defvar personal-keybindings nil)
 #+END_SRC
 ** set up straight.el
+I use straight.el instead of the default package.el, this means I have to turn off package.el and do some ugly lisp.
 #+begin_src emacs-lisp
 (defvar bootstrap-version)
 (let ((bootstrap-file
@@ -55,6 +56,7 @@ Set scopes to lexical (how it should be by default really). And initialize perso
   (load bootstrap-file nil 'nomessage))
 #+END_SRC
 ** set up use-package
+use-package is a way to have usable package management. It just requires to set it up for straight.el
 #+begin_src emacs-lisp
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t)
@@ -62,7 +64,8 @@ Set scopes to lexical (how it should be by default really). And initialize perso
 ;;(setq use-package-always-ensure t)
 #+END_SRC
 ** benchmark-startup
-#+begin_src emacs-lisp 
+This is here so I can benchmark emacs startup, by default it's disabled.
+#+begin_src emacs-lisp :tangle no
 (use-package benchmark-init
   :functions benchmark-init/activate)
 (benchmark-init/activate)
@@ -85,14 +88,6 @@ disable package.el
       package--init-file-ensured t)
 #+END_SRCprp
 ** config editing
-easily edit config
-#+begin_src emacs-lisp
-(defun find-config ()
-  "Edit init.org"
-  (interactive)
-  (find-file (concat user-emacs-directory "init.org")))
-(global-set-key (kbd "C-c I") 'find-config)
-#+END_SRC
 auto compile config
 #+begin_src emacs-lisp
 (defun tangle-init ()
@@ -103,8 +98,7 @@ tangled, and the tangled file is compiled."
     ;; Avoid running hooks when tangling.
     (let ((prog-mode-hook nil))
       (org-babel-tangle)
-      (byte-compile-file (concat user-emacs-directory "init.el"))
-      (load-file (concat user-emacs-directory "init.el")))))
+      (byte-compile-file (concat user-emacs-directory "init.el")))))
 (add-hook 'after-save-hook 'tangle-init)
 #+END_SRC
 ** compile packages
@@ -112,84 +106,8 @@ tangled, and the tangled file is compiled."
 (eval-when-compile
   (defvar use-package-expand-minimally byte-compile-current-file))
 #+END_SRC
-** EXWM
-#+begin_src emacs-lisp :tangle no
-(use-package exwm)
-(require 'exwm)
-(require 'exwm-randr)
-(require 'exwm-systemtray)
-;;(exwm-systemtray-enable)
-;;(setq exwm-replace t)
-;;(exwm-init)
-;;(exwm-randr-enable)
-#+end_src
-Set up titles properly
-#+BEGIN_SRC emacs-lisp :tangle no
-(add-hook 'exwm-update-class-hook
-          (lambda ()
-            (unless (or (string-prefix-p "sun-awt-X11-" exwm-instance-name)
-                        (string= "gimp" exwm-instance-name))
-              (exwm-workspace-rename-buffer exwm-class-name))))
-(add-hook 'exwm-update-title-hook
-          (lambda ()
-            (when (or (not exwm-instance-name)
-                      (string-prefix-p "sun-awt-X11-" exwm-instance-name)
-                      (string= "gimp" exwm-instance-name))
-              (exwm-workspace-rename-buffer exwm-title))))
-#+END_SRC
-Set buffer-list to show all from all workspaces
-#+begin_src emacs-lisp :tangle no
-(setq exwm-workspace-show-all-buffers t)
-(setq exwm-layout-show-all-buffers t)
-#+end_src
-Global keybindings
-#+BEGIN_SRC emacs-lisp :tangle no
-(setq exwm-input-global-keys 
-      `(
-        ;; Bind "s-r" to exit char-mode and fullscreen mode.
-        ([?\s-r] . exwm-reset)
-        ;; Bind "s-w" to switch workspace interactively.
-        ([?\s-w] . exwm-workspace-switch)
-        ;; Bind "s-0" to "s-9" to switch to a workspace by its index.
-        ,@(mapcar (lambda (i)
-                    `(,(kbd (format "s-%d" i)) .
-                      (lambda ()
-                        (interactive)
-                        (exwm-workspace-switch-create ,i))))
-                  (number-sequence 0 9))
-        ;; Bind "s-&" to launch applications ('M-&' also works if the output
-        ;; buffer does not bother you).
-        ([?\s-&] . (lambda (command)
-		     (interactive (list (read-shell-command "$ ")))
-		     (start-process-shell-command command nil command)))
-        ;; Bind "s-<f2>" to "slock", a simple X display locker.
-        ([s-f2] . (lambda ()
-		    (interactive)
-		    (start-process "" nil "/usr/bin/slock")))))
-#+END_SRC
-*** xrandr
-#+begin_src emacs-lisp
-(defun exwm-change-screen-hook ()
-  (let ((xrandr-output-regexp "\n\\([^ ]+\\) connected ")
-        default-output)
-    (with-temp-buffer
-      (call-process "xrandr" nil t nil)
-      (goto-char (point-min))
-      (re-search-forward xrandr-output-regexp nil 'noerror)
-      (setq default-output (match-string 1))
-      (forward-line)
-      (if (not (re-search-forward xrandr-output-regexp nil 'noerror))
-          (call-process "xrandr" nil nil nil "--output" default-output "--auto")
-        (call-process
-         "xrandr" nil nil nil
-         "--output" (match-string 1) "--primary" "--auto"
-         "--output" default-output "--off")
-        (setq exwm-randr-workspace-output-plist (list 0 (match-string 1)))))))
-#+end_src
-#+begin_src emacs-lisp
-(setq exwm-randr-workspace-monitor-plist '(1 "DP-1-2" 3 "DP-1-2" 5 "DP-1-2" 7 "DP-1-2" 9 "DP-1-2" 2 "eDP-1" 4 "eDP-1" 6 "eDP-1" 8 "eDP-1" 0 "eDP-1"))
-#+end_src
 ** shackle
+Shackle is a way to manage windows. I am not sure what this exactly does, but it makes my life a lot easier.
 #+begin_src emacs-lisp
 (use-package shackle
   :demand
@@ -217,6 +135,7 @@ Global keybindings
   (shackle-mode 1))
 #+END_SRC
 ** indentation
+Just indent with 2 spaces everytime and replace tabs with spaces, thanks!
 #+begin_src emacs-lisp
 (setq-default indent-tabs-mode nil)
 (setq tab-width 2)
@@ -275,6 +194,7 @@ TRAMP default to ssh
 (setq tramp-default-method "ssh")
 #+END_SRC
 ** ivy, swiper and counsel
+I use ivy for menu, you can use helm. I will hate you. You will hate me. We will go on with our lives.
 #+begin_src emacs-lisp
 (use-package ivy
   :config
@@ -322,6 +242,7 @@ TRAMP default to ssh
   :after (ivy))
 #+END_SRC
 ** avy
+Package I rarely use but everytime I do, I feel like ninja.
 #+begin_src emacs-lisp
 (use-package avy
   :bind 
@@ -329,6 +250,7 @@ TRAMP default to ssh
   ( "M-j" . avy-goto-char))
 #+End_Src
 ** edit indirect
+Select a part of your document and edit it in another buffer, then commit the changes back, simple, effective, sexy, soothing.
 #+Begin_SRC emacs-lisp
 (use-package edit-indirect
     :bind ( 
@@ -336,6 +258,7 @@ TRAMP default to ssh
     ("C-x 4 p" . edit-indirect-commit)))
 #+END_SRC
 ** whichkey
+Because I can't remember every key chord, I'm not a pianist!
 #+begin_src emacs-lisp
 (use-package which-key
   :config
@@ -343,8 +266,13 @@ TRAMP default to ssh
   (setq which-key-idle-delay 0.1))
 #+END_SRC
 * file jumps
+You should change this
 #+begin_src emacs-lisp
 (global-set-key (kbd "M-n c c") (lambda () "Open config" (interactive) (find-file "~/.emacs.d/init.org")))
+#+end_src
+
+This is my personal, I don't use it, but you can take it as an inspiration.
+#+begin_src emacs-lisp :tangle no
 (global-set-key (kbd "M-n s e k") (lambda () "Open ekonomika" (interactive) (find-file "~/Documents/School/jecna/ekonomika/ekonomika.org")))
 (global-set-key (kbd "M-n s e m") (lambda () (interactive) (find-file "~/Documents/School/jecna/mereni/sesit/mereni.org")))
 (global-set-key (kbd "M-n s e n") (lambda () (interactive) (find-file "~/Documents/School/jecna/elektronika/elektronika.org")))
@@ -367,12 +295,13 @@ TRAMP default to ssh
     (call-interactively #'magit-status)))
  #+END_SRC
 ** git gutter
+Show me what I haven't commited father.
 #+begin_src emacs-lisp 
 (use-package git-gutter
-  :defer 2
   :config (git-gutter-mode 1))
 #+END_SRC
 ** projectile
+That's exactly what I want in my head.
 #+begin_src emacs-lisp
 (use-package projectile
   :defer 4
@@ -385,6 +314,7 @@ TRAMP default to ssh
   (counsel-projectile-mode 1))
 #+END_SRC
 ** lsp
+Lily's Sick Party! Does a lot, but not on it's own.
 #+begin_src emacs-lisp
 (use-package lsp-mode
   :hook (prog-mode . lsp)
@@ -401,8 +331,22 @@ TRAMP default to ssh
   (add-to-list 'lsp-language-id-configuration '(plain-tex-mode . "plaintex")))
 
 (use-package lsp-ui
+  :config
+  (setq lsp-ui-sideline t)
+  (setq lsp-ui-peek t)
+  (setq lsp-ui-doc t)
   :commands lsp-ui-mode)
+
+(use-package lsp-ivy)
 #+END_SRC
+** dap
+#+begin_src emacs-lisp
+(use-package dap-mode
+  :hook 
+  (prog-mode . dap-mode)
+  (dap-mode . dap-ui-mode)
+  (dap-mode . dap-tooltip-mode))
+#+end_src
 ** company
 #+begin_src emacs-lisp
 (use-package company
@@ -411,7 +355,7 @@ TRAMP default to ssh
   (setq company-minimum-prefix-length 1)
   (setq company-selection-wrap-around t)
   (company-tng-configure-default)
-
+  
   :hook (prog-mode . global-company-mode)
   :bind ( "C-<tab>" . company-complete))
 (use-package company-lsp
@@ -489,7 +433,7 @@ switch to compilation window
 ** spellchecking
 List of languages for spellchecking
 #+begin_src emacs-lisp 
- (let ((langs '("american" "čeština")))
+ (let ((langs '("american" "czech")))
       (setq lang-ring (make-ring (length langs)))
       (dolist (elem langs) (ring-insert lang-ring elem)))
 #+END_SRC
@@ -507,15 +451,11 @@ Add function to switch between them
 #+END_SRC
 ** thesaurus
 #+begin_src emacs-lisp
-(use-package powerthesaurus
-  :config
-  (global-set-key (kbd "s-|") 'powerthesaurus-lookup-word-dwim))
+(use-package powerthesaurus)
 #+END_SRC
 ** word definition
 #+begin_src emacs-lisp
-(use-package define-word
-  :config
-  (global-set-key (kbd "M-\\") 'define-word-at-point))
+(use-package define-word)
 #+END_SRC
 ** latex
  #+begin_src emacs-lisp
@@ -545,14 +485,19 @@ word counting
   (shell-command (concat "texcount "
                          ; "uncomment then options go here "
                          (buffer-file-name))))
+
+(defun latex-char-count ()
+  (interactive)
+  (shell-command (concat "detex "
+                         (buffer-file-name)
+                         " | wc --chars")))
 #+end_src
 ** writing
 use text centering with olivetti
 #+begin_src emacs-lisp
-(use-package olivetti)
-;;  :hook text-mode . (olivetti-mode))
+(use-package olivetti
+  :hook (text-mode . olivetti-mode))
 #+END_SRC
-<s
 * org-mode
 ** org
 #+begin_src emacs-lisp
@@ -684,7 +629,7 @@ setting theme
 #+END_SRC
 show parens
 #+begin_src emacs-lisp
-(set-face-background 'show-paren-match "grey84")
+(set-face-background 'show-paren-match "grey")
 (set-face-attribute 'show-paren-match nil :weight 'extra-bold)
 #+END_SRC
 * footer
@@ -699,7 +644,7 @@ Restore file-name-handler-alist values
 (add-hook 'emacs-startup-hook
   (setq file-name-handler-alist temp--file-name-handler-alist))
 #+END_SRC
-#+begin_src emacs-lisp 
+#+begin_src emacs-lisp :tangle no
 (benchmark-init/deactivate)
 (benchmark-init/show-durations-tree)
 #+END_SRC
@@ -734,4 +679,80 @@ Restore file-name-handler-alist values
 #+begin_src emacs-lisp :tangle no
 (use-package eyebrowse)
 #+END_SRC
-
+** EXWM
+#+begin_src emacs-lisp :tangle no
+(use-package exwm)
+(require 'exwm)
+(require 'exwm-randr)
+(require 'exwm-systemtray)
+;;(exwm-systemtray-enable)
+;;(setq exwm-replace t)
+;;(exwm-init)
+;;(exwm-randr-enable)
+#+end_src
+Set up titles properly
+#+BEGIN_SRC emacs-lisp :tangle no
+(add-hook 'exwm-update-class-hook
+          (lambda ()
+            (unless (or (string-prefix-p "sun-awt-X11-" exwm-instance-name)
+                        (string= "gimp" exwm-instance-name))
+              (exwm-workspace-rename-buffer exwm-class-name))))
+(add-hook 'exwm-update-title-hook
+          (lambda ()
+            (when (or (not exwm-instance-name)
+                      (string-prefix-p "sun-awt-X11-" exwm-instance-name)
+                      (string= "gimp" exwm-instance-name))
+              (exwm-workspace-rename-buffer exwm-title))))
+#+END_SRC
+Set buffer-list to show all from all workspaces
+#+begin_src emacs-lisp :tangle no
+(setq exwm-workspace-show-all-buffers t)
+(setq exwm-layout-show-all-buffers t)
+#+end_src
+Global keybindings
+#+BEGIN_SRC emacs-lisp :tangle no
+(setq exwm-input-global-keys 
+      `(
+        ;; Bind "s-r" to exit char-mode and fullscreen mode.
+        ([?\s-r] . exwm-reset)
+        ;; Bind "s-w" to switch workspace interactively.
+        ([?\s-w] . exwm-workspace-switch)
+        ;; Bind "s-0" to "s-9" to switch to a workspace by its index.
+        ,@(mapcar (lambda (i)
+                    `(,(kbd (format "s-%d" i)) .
+                      (lambda ()
+                        (interactive)
+                        (exwm-workspace-switch-create ,i))))
+                  (number-sequence 0 9))
+        ;; Bind "s-&" to launch applications ('M-&' also works if the output
+        ;; buffer does not bother you).
+        ([?\s-&] . (lambda (command)
+		     (interactive (list (read-shell-command "$ ")))
+		     (start-process-shell-command command nil command)))
+        ;; Bind "s-<f2>" to "slock", a simple X display locker.
+        ([s-f2] . (lambda ()
+		    (interactive)
+		    (start-process "" nil "/usr/bin/slock")))))
+#+END_SRC
+*** xrandr
+#+begin_src emacs-lisp
+(defun exwm-change-screen-hook ()
+  (let ((xrandr-output-regexp "\n\\([^ ]+\\) connected ")
+        default-output)
+    (with-temp-buffer
+      (call-process "xrandr" nil t nil)
+      (goto-char (point-min))
+      (re-search-forward xrandr-output-regexp nil 'noerror)
+      (setq default-output (match-string 1))
+      (forward-line)
+      (if (not (re-search-forward xrandr-output-regexp nil 'noerror))
+          (call-process "xrandr" nil nil nil "--output" default-output "--auto")
+        (call-process
+         "xrandr" nil nil nil
+         "--output" (match-string 1) "--primary" "--auto"
+         "--output" default-output "--off")
+        (setq exwm-randr-workspace-output-plist (list 0 (match-string 1)))))))
+#+end_src
+#+begin_src emacs-lisp
+(setq exwm-randr-workspace-monitor-plist '(1 "DP-1-2" 3 "DP-1-2" 5 "DP-1-2" 7 "DP-1-2" 9 "DP-1-2" 2 "eDP-1" 4 "eDP-1" 6 "eDP-1" 8 "eDP-1" 0 "eDP-1"))
+#+end_src
