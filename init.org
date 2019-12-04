@@ -1,0 +1,737 @@
+#+PROPERTY: header-args :tangle yes
+* installation
+** preparation
+Use your package manager (Fedora and Arch as examples)
+#+begin_src shell :tangle no
+sudo dnf install emacs git
+sudo pacman -S emacs git
+#+END_SRC
+** config
+#+begin_src shell :tangle no 
+cd ~
+mv .emacs.d .emacs.d.old
+mkdir .emacs.d
+cd .emacs.d
+git init
+git remote add origin master git@github.com:WesterWest/ricemacs
+git pull
+git update-index --assume-unchanged init.el
+#+END_SRC
+** ccls
+#+begin_src shell :tangle no
+sudo dnf install clang-devel llvm-devel
+#+END_SRC
+** inititial init.el
+#+begin_src emacs-lisp :tangle no
+;; This file replaces itself with the actual configuration at first run.
+;; Open the configuration
+(find-file (concat user-emacs-directory "init.org"))
+;; tangle it
+(org-babel-tangle)
+;; load it
+(load-file (concat user-emacs-directory "init.el"))
+;; finally byte-compile it
+(byte-compile-file (concat user-emacs-directory "init.el"))
+#+END_SRC
+* configuration
+Set scopes to lexical (how it should be by default really). And initialize personal-keybindings because byte compiled Emacs else declares it void and yields errors.
+#+begin_src emacs-lisp
+;;; -*- lexical-binding: t -*-
+(defvar personal-keybindings nil)
+#+END_SRC
+** set up straight.el
+#+begin_src emacs-lisp
+(defvar bootstrap-version)
+(let ((bootstrap-file
+       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
+      (bootstrap-version 5))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/raxod502/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
+#+END_SRC
+** set up use-package
+#+begin_src emacs-lisp
+(straight-use-package 'use-package)
+(setq straight-use-package-by-default t)
+;;(defvar use-package-always-defer t)
+;;(setq use-package-always-ensure t)
+#+END_SRC
+** benchmark-startup
+#+begin_src emacs-lisp 
+(use-package benchmark-init
+  :functions benchmark-init/activate)
+(benchmark-init/activate)
+#+END_SRC
+** optimalization
+increase garbage collector treshold
+#+begin_src emacs-lisp
+(setq gc-cons-threshold 402653184
+      gc-cons-percentage 0.6)
+#+END_SRC
+unset file-name-handler-alist during startup
+#+begin_src emacs-lisp 
+(defvar temp--file-name-handler-alist file-name-handler-alist)
+(setq file-name-handler-alist nil)
+#+END_SRC
+disable package.el
+#+begin_src emacs-lisp 
+(setq package-enable-at-startup nil ; don't auto-initialize!
+      ;; don't add that `custom-set-variables' block to my initl!
+      package--init-file-ensured t)
+#+END_SRCprp
+** config editing
+easily edit config
+#+begin_src emacs-lisp
+(defun find-config ()
+  "Edit init.org"
+  (interactive)
+  (find-file (concat user-emacs-directory "init.org")))
+(global-set-key (kbd "C-c I") 'find-config)
+#+END_SRC
+auto compile config
+#+begin_src emacs-lisp
+(defun tangle-init ()
+  "If the current buffer is 'init.org' the code-blocks are
+tangled, and the tangled file is compiled."
+  (when (equal (buffer-file-name)
+               (expand-file-name (concat user-emacs-directory "init.org")))
+    ;; Avoid running hooks when tangling.
+    (let ((prog-mode-hook nil))
+      (org-babel-tangle)
+      (byte-compile-file (concat user-emacs-directory "init.el"))
+      (load-file (concat user-emacs-directory "init.el")))))
+(add-hook 'after-save-hook 'tangle-init)
+#+END_SRC
+** compile packages
+#+begin_src emacs-lisp
+(eval-when-compile
+  (defvar use-package-expand-minimally byte-compile-current-file))
+#+END_SRC
+** EXWM
+#+begin_src emacs-lisp :tangle no
+(use-package exwm)
+(require 'exwm)
+(require 'exwm-randr)
+(require 'exwm-systemtray)
+;;(exwm-systemtray-enable)
+;;(setq exwm-replace t)
+;;(exwm-init)
+;;(exwm-randr-enable)
+#+end_src
+Set up titles properly
+#+BEGIN_SRC emacs-lisp :tangle no
+(add-hook 'exwm-update-class-hook
+          (lambda ()
+            (unless (or (string-prefix-p "sun-awt-X11-" exwm-instance-name)
+                        (string= "gimp" exwm-instance-name))
+              (exwm-workspace-rename-buffer exwm-class-name))))
+(add-hook 'exwm-update-title-hook
+          (lambda ()
+            (when (or (not exwm-instance-name)
+                      (string-prefix-p "sun-awt-X11-" exwm-instance-name)
+                      (string= "gimp" exwm-instance-name))
+              (exwm-workspace-rename-buffer exwm-title))))
+#+END_SRC
+Set buffer-list to show all from all workspaces
+#+begin_src emacs-lisp :tangle no
+(setq exwm-workspace-show-all-buffers t)
+(setq exwm-layout-show-all-buffers t)
+#+end_src
+Global keybindings
+#+BEGIN_SRC emacs-lisp :tangle no
+(setq exwm-input-global-keys 
+      `(
+        ;; Bind "s-r" to exit char-mode and fullscreen mode.
+        ([?\s-r] . exwm-reset)
+        ;; Bind "s-w" to switch workspace interactively.
+        ([?\s-w] . exwm-workspace-switch)
+        ;; Bind "s-0" to "s-9" to switch to a workspace by its index.
+        ,@(mapcar (lambda (i)
+                    `(,(kbd (format "s-%d" i)) .
+                      (lambda ()
+                        (interactive)
+                        (exwm-workspace-switch-create ,i))))
+                  (number-sequence 0 9))
+        ;; Bind "s-&" to launch applications ('M-&' also works if the output
+        ;; buffer does not bother you).
+        ([?\s-&] . (lambda (command)
+		     (interactive (list (read-shell-command "$ ")))
+		     (start-process-shell-command command nil command)))
+        ;; Bind "s-<f2>" to "slock", a simple X display locker.
+        ([s-f2] . (lambda ()
+		    (interactive)
+		    (start-process "" nil "/usr/bin/slock")))))
+#+END_SRC
+*** xrandr
+#+begin_src emacs-lisp
+(defun exwm-change-screen-hook ()
+  (let ((xrandr-output-regexp "\n\\([^ ]+\\) connected ")
+        default-output)
+    (with-temp-buffer
+      (call-process "xrandr" nil t nil)
+      (goto-char (point-min))
+      (re-search-forward xrandr-output-regexp nil 'noerror)
+      (setq default-output (match-string 1))
+      (forward-line)
+      (if (not (re-search-forward xrandr-output-regexp nil 'noerror))
+          (call-process "xrandr" nil nil nil "--output" default-output "--auto")
+        (call-process
+         "xrandr" nil nil nil
+         "--output" (match-string 1) "--primary" "--auto"
+         "--output" default-output "--off")
+        (setq exwm-randr-workspace-output-plist (list 0 (match-string 1)))))))
+#+end_src
+#+begin_src emacs-lisp
+(setq exwm-randr-workspace-monitor-plist '(1 "DP-1-2" 3 "DP-1-2" 5 "DP-1-2" 7 "DP-1-2" 9 "DP-1-2" 2 "eDP-1" 4 "eDP-1" 6 "eDP-1" 8 "eDP-1" 0 "eDP-1"))
+#+end_src
+** shackle
+#+begin_src emacs-lisp
+(use-package shackle
+  :demand
+  :init
+  (setq shackle-default-alignment 'below
+        shackle-default-size 0.4
+        shackle-rules '((help-mode           :align below :select t)
+                        (helpful-mode        :align below)
+                        (compilation-mode    :select t   :size 0.25)
+                        ("*compilation*"     :select nil :size 0.25)
+                        ("*ag search*"       :select nil :size 0.25)
+                        ("*Flycheck errors*" :select nil :size 0.25)
+                        ("*Warnings*"        :select nil :size 0.25)
+                        ("*Error*"           :select nil :size 0.25)
+                        ("*Org Links*"       :select nil   :size 0.2)
+                        (magit-status-mode                :align bottom :size 0.5  :inhibit-window-quit t)
+                        (magit-log-mode                   :same t                  :inhibit-window-quit t)
+                        (magit-commit-mode                :ignore t)
+                        (magit-diff-mode     :select nil  :align left   :size 0.5)
+                        (git-commit-mode                  :same t)
+                        (vc-annotate-mode                 :same t)
+                        ("^\\*git-gutter.+\\*$" :regexp t :size 15 :noselect t)
+                        ))
+  :config
+  (shackle-mode 1))
+#+END_SRC
+** indentation
+#+begin_src emacs-lisp
+(setq-default indent-tabs-mode nil)
+(setq tab-width 2)
+
+(setq js-indent-level 2)
+(setq css-indent-offset 2)
+(setq-default c-basic-offset 2)
+(setq c-basic-offset 2)
+(setq-default tab-width 2)
+(setq-default c-basic-indent 2)
+#+END_SRC
+** kill all buffers
+#+begin_src emacs-lisp
+(defun kill-all-buffers ()
+  (interactive)
+  (mapc 'kill-buffer (buffer-list)))
+#+END_SRC
+** switch to sane visuals
+#+begin_src emacs-lisp
+(global-visual-line-mode 1)
+(global-auto-revert-mode t)
+(scroll-bar-mode -1)
+(tool-bar-mode -1)
+(menu-bar-mode -1)
+(fset 'yes-or-no-p 'y-or-n-p)      ; y and n instead of yes and no everywhere else
+(delete-selection-mode 1)
+(display-time-mode t)
+(show-paren-mode t)
+  #+END_SRC
+*** Basic things
+ #+begin_src emacs-lisp
+(setq
+ inhibit-startup-message t         ; Don't show the startup message
+ inhibit-startup-screen t          ; or screen
+ cursor-in-non-selected-windows t  ; Hide the cursor in inactive windows
+
+ echo-keystrokes 0.1               ; Show keystrokes right away, don't show the message in the scratch buffer
+ initial-scratch-message nil       ; Empty scratch buffer
+ sentence-end-double-space nil     ; Sentences should end in one space, come on!
+ confirm-kill-emacs 'y-or-n-p      ; y and n instead of yes and no when quitting with 'q'
+)
+ #+END_SRC
+*** Custom file separately
+ #+begin_src emacs-lisp
+(setq custom-file "~/.emacs.d/custom.el")
+(load custom-file 'noerror)
+ #+END_SRC
+*** Show me free keys
+ #+begin_src emacs-lisp
+(use-package free-keys
+  :bind ("C-h C-k" . free-keys))
+ #+END_SRC
+** TRAMP
+TRAMP default to ssh
+#+begin_src emacs-lisp 
+(setq tramp-default-method "ssh")
+#+END_SRC
+** ivy, swiper and counsel
+#+begin_src emacs-lisp
+(use-package ivy
+  :config
+  (setq ivy-use-virtual-buffers t)
+  (setq ivy-count-format "(%d/%d) ")
+  (setq enable-recursive-minibuffers t)
+  (setq ivy-initial-inputs-alist nil)
+  (setq ivy-re-builders-alist
+      '((swiper . ivy--regex-plus)
+        (t      . ivy--regex-fuzzy)))   ;; enable fuzzy searching everywhere except for Swiper
+  ;; (global-set-key (kbd "M-s-b") 'ivy-resume)
+  (add-hook 'after-init-hook 'ivy-mode))
+
+(use-package ivy-rich
+  :functions ivy-rich-mode
+  :after (ivy counsel)
+  :config
+  (ivy-rich-mode 1)
+  (setq ivy-rich-path-style 'abbrev)) ;; To abbreviate paths using abbreviate-file-name (e.g. replace “/home/username” with “~”
+
+(use-package swiper
+  :after (ivy)
+  :config
+  ;; (global-set-key "\C-s" 'swiper)
+  ;; (global-set-key "\C-r" 'swiper)
+  (global-set-key (kbd "M-f") 'swiper))
+
+(use-package counsel
+  :after (ivy)
+  :config
+  (global-set-key (kbd "M-x") 'counsel-M-x)
+  (global-set-key (kbd "s-y") 'counsel-yank-pop)
+  (global-set-key (kbd "C-x C-f") 'counsel-find-file)
+  (global-set-key (kbd "s-F") 'counsel-rg)
+  (global-set-key (kbd "s-g") 'counsel-git)
+  (global-set-key (kbd "C-x b") 'counsel-switch-buffer)
+  (add-hook 'after-init-hook 'counsel-mode))
+
+;; When using git ls (via counsel-git), include unstaged files
+(setq counsel-git-cmd "git ls-files --full-name --exclude-standard --others --cached --")
+
+(use-package smex
+  :after (ivy))
+(use-package flx
+  :after (ivy))
+#+END_SRC
+** avy
+#+begin_src emacs-lisp
+(use-package avy
+  :bind 
+  ( "C-x j" . avy-goto-word-or-subword-1)
+  ( "M-j" . avy-goto-char))
+#+End_Src
+** edit indirect
+#+Begin_SRC emacs-lisp
+(use-package edit-indirect
+    :bind ( 
+    ("C-x 4 e" . edit-indirect-region)
+    ("C-x 4 p" . edit-indirect-commit)))
+#+END_SRC
+** whichkey
+#+begin_src emacs-lisp
+(use-package which-key
+  :config
+  (which-key-mode)
+  (setq which-key-idle-delay 0.1))
+#+END_SRC
+* file jumps
+#+begin_src emacs-lisp
+(global-set-key (kbd "M-n c c") (lambda () "Open config" (interactive) (find-file "~/.emacs.d/init.org")))
+(global-set-key (kbd "M-n s e k") (lambda () "Open ekonomika" (interactive) (find-file "~/Documents/School/jecna/ekonomika/ekonomika.org")))
+(global-set-key (kbd "M-n s e m") (lambda () (interactive) (find-file "~/Documents/School/jecna/mereni/sesit/mereni.org")))
+(global-set-key (kbd "M-n s e n") (lambda () (interactive) (find-file "~/Documents/School/jecna/elektronika/elektronika.org")))
+(global-set-key (kbd "M-n s m t") (lambda () (interactive) (find-file "~/Documents/School/jecna/mikroprocesory/mikroprocesory.org")))
+(global-set-key (kbd "M-n s c j") (lambda () (interactive) (find-file "~/Documents/School/jecna/cestina/cestina.org")))
+(global-set-key (kbd "M-n p t s") (lambda () (interactive) (find-file "~/Documents/Projects/tunel/scénář.tex")))
+(global-set-key (kbd "M-n w o b") (lambda () (interactive) (find-file "~/Documents/Website/omase.tk/content-org/blog.org")))
+#+end_src
+* prog-mode
+** magit
+ #+begin_src emacs-lisp
+(use-package magit)
+
+(setq magit-repository-directories '(("\~/Projects" . 4) ))
+
+(defun magit-status-with-prefix-arg ()
+  "Call `magit-status` with a prefix."
+  (interactive)
+  (let ((current-prefix-arg '(4)))
+    (call-interactively #'magit-status)))
+ #+END_SRC
+** git gutter
+#+begin_src emacs-lisp 
+(use-package git-gutter
+  :defer 2
+  :config (git-gutter-mode 1))
+#+END_SRC
+** projectile
+#+begin_src emacs-lisp
+(use-package projectile
+  :defer 4
+  :config
+  (projectile-mode 1)
+  (define-key projectile-mode-map (kbd "C-c p") 'projectile-command-map))
+
+(use-package counsel-projectile
+  :config
+  (counsel-projectile-mode 1))
+#+END_SRC
+** lsp
+#+begin_src emacs-lisp
+(use-package lsp-mode
+  :hook (prog-mode . lsp)
+  :commands lsp
+  :config
+  (setq lsp-prefer-flymake nil)
+  (setq lsp-enable-snippet t)
+  (setq lsp-enable-indentation t)
+  (lsp-register-client
+   (make-lsp-client :new-connection (lsp-stdio-connection "digestif")
+                    :major-modes '(latex-mode plain-tex-mode)
+                    :server-id 'digestif))
+  (add-to-list 'lsp-language-id-configuration '(latex-mode . "latex"))
+  (add-to-list 'lsp-language-id-configuration '(plain-tex-mode . "plaintex")))
+
+(use-package lsp-ui
+  :commands lsp-ui-mode)
+#+END_SRC
+** company
+#+begin_src emacs-lisp
+(use-package company
+  :config
+  (setq company-idle-dalay 0)
+  (setq company-minimum-prefix-length 1)
+  (setq company-selection-wrap-around t)
+  (company-tng-configure-default)
+
+  :hook (prog-mode . global-company-mode)
+  :bind ( "C-<tab>" . company-complete))
+(use-package company-lsp
+  :commands company-lsp
+  :config (push `company-lsp company-backends))
+
+#+END_SRC
+** pcre2el
+#+begin_src emacs-lisp
+(use-package pcre2el)
+#+end_src
+** web
+   #+begin_src emacs-lisp
+   (use-package web-mode)
+   #+end_src
+** language specific
+*** rust
+rust-mode
+#+begin_src emacs-lisp
+(use-package rust-mode)
+#+END_SRC
+cargo
+#+begin_src emacs-lisp
+(use-package cargo
+  :hook (rust-mode . cargo-minor-mode))
+#+END_SRC
+*** c++/c
+ccls
+ #+begin_src emacs-lisp
+  (use-package ccls
+    :after projectile
+    :custom
+    (ccls-args nil)
+    (ccls-executable (executable-find "ccls"))
+;;    (projectile-project-root-files-top-down-recurring
+;;     (append '("compile_commands.json" ".ccls")
+;;     projectile-project-root-files-top-down-recurring))
+    :config (push ".ccls-cache" projectile-globally-ignored-directories))
+ #+END_SRC
+cmake
+ #+begin_src emacs-lisp 
+  (use-package cmake-mode
+    :mode ("CMakeLists\\.txt\\'" "\.cmake\\'"))
+
+  (use-package cmake-font-lock
+    :after (cmake-mode)
+    :hook (cmake-mode . cmake-font-lock-activate))
+
+  (use-package cmake-ide
+    :functions (cmake-ide-load-db cmake-ide-setup)
+    :hook (c++-mode . my/cmake-ide-find-project)
+    :preface
+    (defun my/cmake-ide-find-project ()
+      "Finds the directory of the project for cmake-ide."
+      (with-eval-after-load 'projectile
+	(setq cmake-ide-project-dir (projectile-project-root))
+	(setq cmake-ide-build-dir (concat cmake-ide-project-dir "build")))
+      (setq cmake-ide-compile-command (concat "cd " cmake-ide-build-dir " && make"))
+      (cmake-ide-load-db))
+#+END_SRC
+switch to compilation window
+#+begin_src emacs-lisp 
+(defun my/switch-to-compilation-window ()
+  "Switches to the *compilation* buffer after compilation."
+  (other-window 1))
+  :bind ([remap comment-region] . cmake-ide-compile)
+  :init (cmake-ide-setup)
+  :config (advice-add 'cmake-ide-compile :after #'my/switch-to-compilation-window))
+ #+END_SRC
+*** openscad
+#+begin_src emacs-lisp
+(use-package scad-mode)
+#+end_src
+* text-mode
+** spellchecking
+List of languages for spellchecking
+#+begin_src emacs-lisp 
+ (let ((langs '("american" "čeština")))
+      (setq lang-ring (make-ring (length langs)))
+      (dolist (elem langs) (ring-insert lang-ring elem)))
+#+END_SRC
+Add function to switch between them
+#+begin_src emacs-lisp 
+(defun cycle-ispell-languages ()
+  (interactive)
+  (let ((lang (ring-ref lang-ring -1)))
+    (ring-insert lang-ring lang)
+    (ispell-change-dictionary lang)))
+#+END_SRC
+#+begin_src emacs-lisp
+(setq ispell-program-name "enchant-2")
+(add-hook 'text-mode-hook 'flyspell-mode)
+#+END_SRC
+** thesaurus
+#+begin_src emacs-lisp
+(use-package powerthesaurus
+  :config
+  (global-set-key (kbd "s-|") 'powerthesaurus-lookup-word-dwim))
+#+END_SRC
+** word definition
+#+begin_src emacs-lisp
+(use-package define-word
+  :config
+  (global-set-key (kbd "M-\\") 'define-word-at-point))
+#+END_SRC
+** latex
+ #+begin_src emacs-lisp
+(use-package auctex
+  :defines (reftex-plug-into-AUCTeX Tex-parse-self TeX-auto-save TeX-PDF-mode)
+  :config
+  (setq TeX-auto-save t)
+  (setq reftex-plug-into-AUCTeX t)
+  (setq TeX-parse-self t)
+  (setq TeX-PDF-mode t)
+  (setq-default TeX-master nil)
+  :hook
+  (LaTeX-mode . visual-line-mode)
+  (LaTeX-mode . flyspell-mode)
+  (LaTeX-mode . LaTeX-math-mode)
+  (LaTeX-mode . turn-on-reftex)
+  (LaTeX-mode . orgtbl-mode)
+  (LaTeX-mode . company-mode))
+
+(use-package company-auctex)
+(setq Tex-quote-language-alist '(("czech" ",," "''" t) ("cz_cs" ",," "''" t)))
+ #+END_SRC
+word counting
+#+begin_src emacs-lisp
+(defun latex-word-count ()
+  (interactive)
+  (shell-command (concat "texcount "
+                         ; "uncomment then options go here "
+                         (buffer-file-name))))
+#+end_src
+** writing
+use text centering with olivetti
+#+begin_src emacs-lisp
+(use-package olivetti)
+;;  :hook text-mode . (olivetti-mode))
+#+END_SRC
+<s
+* org-mode
+** org
+#+begin_src emacs-lisp
+(use-package org
+;;  :straight (:type built-in))
+)
+(setq org-directory "~/Documents/Notes")
+;;(setq org-export-dispatch-use-expert-ui t)
+#+END_SRC
+Refile targets should include files and down to 9 levels into them.
+#+begin_src emacs-lisp
+(setq org-refile-targets (quote ((nil :maxlevel . 9)
+                                 (org-agenda-files :maxlevel . 9))))
+#+END_SRC
+<el TAB for emacs lisp code block
+#+begin_src emacs-lisp
+(eval-after-load 'org
+  '(progn
+    (add-to-list 'org-structure-template-alist '("el" . "src emacs-lisp"))
+    (define-key org-mode-map (kbd "C-'") nil)
+    (global-set-key (kbd "C-c a") 'org-agenda)
+    (require 'org-tempo)))
+#+END_SRC
+Tabs behavior inside code blocks
+#+begin_src emacs-lisp 
+(setq org-src-tab-acts-natively t)
+(setq org-src-preserve-indentation t)
+(setq org-src-fontify-natively t)
+#+END_SRC
+State changes for todos and also notes should go into a Logbook drawer:
+#+begin_src emacs-lisp 
+(setq org-log-into-drawer t)
+#+END_SRC
+links.org for bookmarks
+#+begin_src emacs-lisp 
+(defun org-mode-export-links ()
+  "Export links document to HTML automatically when 'links.org' is changed"
+  (when (equal (buffer-file-name) "~/Documents/Notes/links.org")
+    (progn
+      (org-html-export-to-html)
+      (message "HTML exported"))))
+
+(add-hook 'after-save-hook 'org-mode-export-links)
+#+END_SRC
+#+begin_src emacs-lisp 
+(global-set-key (kbd "C-c c") 'org-capture)
+(setq org-cycle-separator-lines 1)
+#+END_SRC
+Add closed date when todo goes to DONE state
+#+begin_src emacs-lisp 
+(setq org-log-done 'time)
+#+END_SRC
+#+begin_src emacs-lisp 
+(setq org-capture-templates
+             (quote (("n"
+                      "Note to Notes.org"
+                      entry (file+olp "~/Documents/Notes/Notes.org" "Notes")
+                      "* %?\n%U\n%a\n")
+                     ("t"
+                      "Todo in Notes.org"
+                      entry (file+olp "~/Documents/Notes/Notes.org" "TODOs")
+                      "* TODO %?\n%U\n%a\n"))))
+                      
+#+END_SRC
+** pandock export
+#+begin_src emacs-lisp
+(use-package ox-pandoc
+  :after (ox org))
+#+END_SRC
+** ox-hugo
+#+begin_src emacs-lisp :tangle no
+(use-package ox-hugo
+  :after (ox org))
+#+END_SRC
+#+begin_src emacs-lisp :tangle no
+;; Populates only the EXPORT_FILE_NAME property in the inserted headline.
+(require 'ox-hugo)
+;; define variable to get rid of 'reference to free variable' warnings
+;;(defvar org-capture-templates nil)
+(with-eval-after-load 'org-capture
+  (defun org-hugo-new-subtree-post-capture-template ()
+    "Returns `org-capture' template string for new blog post.
+See `org-capture-templates' for more information."
+    (let* ((title (read-from-minibuffer "Post Title: ")) ;Prompt to enter the post title
+           (fname (org-hugo-slug title)))
+      (mapconcat #'identity
+                 `(
+                   ,(concat "* TODO " title)
+                   ":PROPERTIES:"
+                   ,(concat ":EXPORT_FILE_NAME: " fname)
+                   ":END:"
+                   "%?\n")          ;Place the cursor here finally
+                 "\n"))))
+
+(add-to-list 'org-capture-templates
+               '("b"
+                 "Blog post at omase.tk"
+                 entry
+                 (file+olp "~/Documents/Website/omase.tk/content-org/blog.org" "Drafts")
+                 (function org-hugo-new-subtree-post-capture-template)))
+#+END_SRC
+#+begin_src emacs-lisp :tangle no
+(defun org-hugo-rebuild-and-sync (path)
+  (let ((path (concat "hugo && rsync -avz --delete ../public/ " path)))
+    (shell-command path)))
+
+(defun org-hugo-sync-omase-tk ()
+  (interactive)
+  (shell-command "cd /home/yachimm_thomasegh/Documents/Website/omase.tk/ ; hugo && rsync -avz --delete /home/yachimm_thomasegh/Documents/Website/omase.tk/public/ yachimm_thomasegh@omase.tk:/var/www/omase.tk/public/"))
+#+END_SRC
+** ox-jekyll-md
+#+begin_src emacs-lisp
+(use-package ox-jekyll-md
+  :config
+  (setq org-jekyll-md-include-yaml-front-matter nil))
+#+end_src
+* theming
+turn line numbers
+#+begin_src emacs-lisp
+(global-display-line-numbers-mode t)
+;;(add-hook 
+#+END_SRC
+setting theme
+#+begin_src emacs-lisp
+(use-package poet-theme
+  :defer 1
+  :config (load-theme 'poet-dark))
+;;(add-hook after-init-hook '(load-theme 'poet-dark))
+#+END_SRC
+show parens
+#+begin_src emacs-lisp
+(set-face-background 'show-paren-match "grey84")
+(set-face-attribute 'show-paren-match nil :weight 'extra-bold)
+#+END_SRC
+* footer
+Restore garbage collection values
+#+begin_src emacs-lisp 
+(add-hook 'emacs-startup-hook
+  (setq gc-cons-threshold 16777216
+        gc-cons-percentage 0.1))
+#+END_SRC
+Restore file-name-handler-alist values
+#+begin_src emacs-lisp 
+(add-hook 'emacs-startup-hook
+  (setq file-name-handler-alist temp--file-name-handler-alist))
+#+END_SRC
+#+begin_src emacs-lisp 
+(benchmark-init/deactivate)
+(benchmark-init/show-durations-tree)
+#+END_SRC
+* not in use
+#+begin_src emacs-lisp
+;;-------------------------------------------------------------------------------
+;;(use-package hydra) 
+;;-------------------------------------------------------------------------------
+
+;;(use-package mu4e
+;;  :ensure t
+;;  :options
+;;  (setq mail-user-agent 'mu4e-user-agent))
+#+END_SRC
+** Set up MELPA
+#+begin_src emacs-lisp :tangle no
+(require 'package)
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+(package-initialize)
+(unless package-archive-contents
+  (package-refresh-contents))
+#+END_SRC
+** Move text
+#+begin_src emacs-lisp :tangle no
+(use-package move-text :config (move-text-default-bindings))
+#+END_SRC
+** flycheck
+#+begin_src emacs-lisp
+ ;; (use-package flycheck)
+#+END_SRC
+** eyebrowse
+#+begin_src emacs-lisp :tangle no
+(use-package eyebrowse)
+#+END_SRC
+
