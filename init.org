@@ -338,6 +338,9 @@ Lily's Sick Party! Does a lot, but not on it's own.
   :commands lsp-ui-mode)
 
 (use-package lsp-ivy)
+
+(use-package flycheck
+  :hook (prog-mode . flycheck-mode))
 #+END_SRC
 ** dap
 #+begin_src emacs-lisp
@@ -360,7 +363,10 @@ Lily's Sick Party! Does a lot, but not on it's own.
   :bind ( "C-<tab>" . company-complete))
 (use-package company-lsp
   :commands company-lsp
-  :config (push `company-lsp company-backends))
+  :config 
+  (add-to-list 'company-lsp-filter-candidates '(difestif . nil))
+  (push `company-lsp company-backends)
+)
 
 #+END_SRC
 ** pcre2el
@@ -382,6 +388,11 @@ cargo
 (use-package cargo
   :hook (rust-mode . cargo-minor-mode))
 #+END_SRC
+**** pest.rs
+#+begin_src emacs-lisp
+(use-package pest-mode)
+(use-package flycheck-pest)
+#+end_src
 *** c++/c
 ccls
  #+begin_src emacs-lisp
@@ -429,25 +440,22 @@ switch to compilation window
 #+begin_src emacs-lisp
 (use-package scad-mode)
 #+end_src
+*** c#
+#+begin_src emacs-lisp
+(use-package csharp-mode) 
+#+end_src
+*** gdscript
+#+begin_src emacs-lisp
+(use-package gdscript-mode)
+#+end_src
 * text-mode
 ** spellchecking
 List of languages for spellchecking
-#+begin_src emacs-lisp 
- (let ((langs '("american" "czech")))
-      (setq lang-ring (make-ring (length langs)))
-      (dolist (elem langs) (ring-insert lang-ring elem)))
-#+END_SRC
-Add function to switch between them
-#+begin_src emacs-lisp 
-(defun cycle-ispell-languages ()
-  (interactive)
-  (let ((lang (ring-ref lang-ring -1)))
-    (ring-insert lang-ring lang)
-    (ispell-change-dictionary lang)))
-#+END_SRC
 #+begin_src emacs-lisp
 (setq ispell-program-name "enchant-2")
+(setq ispell-dictionary "czech")
 (add-hook 'text-mode-hook 'flyspell-mode)
+(add-hook 'prog-mode-hook 'flyspell-prog-mode)
 #+END_SRC
 ** thesaurus
 #+begin_src emacs-lisp
@@ -622,10 +630,32 @@ turn line numbers
 #+END_SRC
 setting theme
 #+begin_src emacs-lisp
-(use-package poet-theme
-  :defer 1
-  :config (load-theme 'poet-dark))
+;;(use-package poet-theme
+;;  :defer 1
+;;  :config (load-theme 'poet-dark))
 ;;(add-hook after-init-hook '(load-theme 'poet-dark))
+
+(use-package doom-themes
+  :config
+  ;; Global settings (defaults)
+  (setq doom-themes-enable-bold t    ; if nil, bold is universally disabled
+        doom-themes-enable-italic t) ; if nil, italics is universally disabled
+  (load-theme 'doom-one t)
+
+  ;; Enable flashing mode-line on errors
+  (doom-themes-visual-bell-config)
+  
+  ;; Enable custom neotree theme (all-the-icons must be installed!)
+  (doom-themes-neotree-config)
+  ;; or for treemacs users
+  (setq doom-themes-treemacs-theme "doom-colors") ; use the colorful treemacs theme
+  (doom-themes-treemacs-config)
+  
+  ;; Corrects (and improves) org-mode's native fontification.
+  (doom-themes-org-config))
+
+(use-package doom-modeline
+      :hook (after-init . doom-modeline-mode))
 #+END_SRC
 show parens
 #+begin_src emacs-lisp
